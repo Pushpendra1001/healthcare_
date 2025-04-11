@@ -443,7 +443,7 @@ class HomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Update Health Data',
+                'Add Health Activity',  // Changed from "Update" to "Add"
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -451,7 +451,7 @@ class HomeScreen extends StatelessWidget {
               ),
               SizedBox(height: 5),
               Text(
-                'Enter your latest health metrics',
+                'Enter your latest activity data',
                 style: TextStyle(
                   color: Colors.grey[600],
                   fontSize: 14,
@@ -460,7 +460,7 @@ class HomeScreen extends StatelessWidget {
               SizedBox(height: 20),
               _buildInputField(
                 controller: stepsController,
-                labelText: 'Steps',
+                labelText: 'Steps taken',
                 icon: Icons.directions_walk,
                 color: Colors.blue,
               ),
@@ -474,7 +474,7 @@ class HomeScreen extends StatelessWidget {
               SizedBox(height: 15),
               _buildInputField(
                 controller: waterController,
-                labelText: 'Water intake (ml)',
+                labelText: 'Water consumed (ml)',
                 icon: Icons.water_drop,
                 color: Colors.blue[300]!,
               ),
@@ -496,36 +496,86 @@ class HomeScreen extends StatelessWidget {
                   SizedBox(width: 10),
                   ElevatedButton(
                     onPressed: () async {
+                      // Save the data incrementally
+                      bool hasUpdates = false;
                       
                       if (stepsController.text.isNotEmpty) {
-                        await _firebaseService.updateHealthData(
-                          type: 'steps',
-                          value: int.parse(stepsController.text),
-                        );
+                        try {
+                          final steps = int.parse(stepsController.text);
+                          if (steps > 0) {
+                            await _firebaseService.addHealthData(
+                              type: 'steps',
+                              value: steps,
+                            );
+                            hasUpdates = true;
+                          }
+                        } catch (e) {
+                          // Invalid input, ignore
+                        }
                       }
                       
                       if (caloriesController.text.isNotEmpty) {
-                        await _firebaseService.updateHealthData(
-                          type: 'calories',
-                          value: int.parse(caloriesController.text),
-                        );
+                        try {
+                          final calories = int.parse(caloriesController.text);
+                          if (calories > 0) {
+                            await _firebaseService.addHealthData(
+                              type: 'calories',
+                              value: calories,
+                            );
+                            hasUpdates = true;
+                          }
+                        } catch (e) {
+                          // Invalid input, ignore
+                        }
                       }
                       
                       if (waterController.text.isNotEmpty) {
-                        await _firebaseService.updateHealthData(
-                          type: 'water',
-                          value: int.parse(waterController.text),
-                        );
+                        try {
+                          final water = int.parse(waterController.text);
+                          if (water > 0) {
+                            await _firebaseService.addHealthData(
+                              type: 'water',
+                              value: water,
+                            );
+                            hasUpdates = true;
+                          }
+                        } catch (e) {
+                          // Invalid input, ignore
+                        }
                       }
                       
                       if (sleepController.text.isNotEmpty) {
-                        await _firebaseService.updateHealthData(
-                          type: 'sleep',
-                          value: int.parse(sleepController.text),
-                        );
+                        try {
+                          final sleep = int.parse(sleepController.text);
+                          if (sleep > 0) {
+                            await _firebaseService.addHealthData(
+                              type: 'sleep',
+                              value: sleep,
+                            );
+                            hasUpdates = true;
+                          }
+                        } catch (e) {
+                          // Invalid input, ignore
+                        }
                       }
                       
                       Navigator.pop(context);
+                      
+                      if (hasUpdates) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Activity added successfully!'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('No valid data entered'),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       shape: RoundedRectangleBorder(
@@ -533,7 +583,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                       padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     ),
-                    child: Text('Save'),
+                    child: Text('Add Activity'),
                   ),
                 ],
               ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:healthcare_app/services/firebase_service.dart';
 import 'home_screen.dart';
 import 'monitoring_screen.dart';
 import 'profile_screen.dart';
@@ -16,6 +17,14 @@ class _MainContainerState extends State<MainContainer> {
     MonitoringScreen(),
     ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Check for a new day and setup fresh tracking
+    FirebaseService().checkAndSetupTodayData();
+  }
 
   @override
   Widget build(BuildContext context) {

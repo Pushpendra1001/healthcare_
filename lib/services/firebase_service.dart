@@ -137,8 +137,84 @@ class FirebaseService {
         }, SetOptions(merge: true));
   }
 
+  // Add health data values
+  Future<void> addHealthData({
+    required String type,
+    required int value,
+  }) async {
+    final String uid = currentUserId ?? '';
+    if (uid.isEmpty) throw Exception('No user logged in');
+    
+    final today = DateTime.now();
+    final dateStr = '${today.year}-${today.month.toString().padLeft(2,'0')}-${today.day.toString().padLeft(2,'0')}';
+    
+    // Get current document
+    final docRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('health_data')
+        .doc(dateStr);
+        
+    final docSnapshot = await docRef.get();
+    
+    if (docSnapshot.exists) {
+      // Document exists, get current value and add to it
+      final data = docSnapshot.data() ?? {};
+      final currentValue = data[type] ?? 0;
+      final newValue = currentValue + value;
+      
+      // Update with the new total
+      await docRef.update({
+        type: newValue,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      // Document doesn't exist yet, create it with initial value
+      await docRef.set({
+        'userId': uid,
+        'date': today.toIso8601String(),
+        type: value,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
   // Sign out user
   Future<void> signOut() async {
     await _auth.signOut();
+  }
+
+  // Add this to your FirebaseService class
+  Future<void> checkAndSetupTodayData() async {
+    final String uid = currentUserId ?? '';
+    if (uid.isEmpty) return;
+    
+    final today = DateTime.now();
+    final dateStr = '${today.year}-${today.month.toString().padLeft(2,'0')}-${today.day.toString().padLeft(2,'0')}';
+    
+    final docRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('health_data')
+        .doc(dateStr);
+        
+    final docSnapshot = await docRef.get();
+    
+    if (!docSnapshot.exists) {
+      // Create a new document for today with zero values
+      await docRef.set({
+        'userId': uid,
+        'date': today.toIso8601String(),
+        'steps': 0,
+        'calories': 0,
+        'water': 0,
+        'sleep': 0,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      
+      print('Created new health data document for today: $dateStr');
+    }
   }
 }
