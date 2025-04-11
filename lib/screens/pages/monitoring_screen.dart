@@ -1,7 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+import '../../services/firebase_service.dart';
+import '../../models/HealthData.dart';
+import '../../models/UserTargets.dart';
 
-class MonitoringScreen extends StatelessWidget {
+class MonitoringScreen extends StatefulWidget {
+  @override
+  _MonitoringScreenState createState() => _MonitoringScreenState();
+}
+
+class _MonitoringScreenState extends State<MonitoringScreen> {
+  final FirebaseService _firebaseService = FirebaseService();
+  
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -21,51 +32,108 @@ class MonitoringScreen extends StatelessWidget {
             indicatorColor: Theme.of(context).primaryColor,
           ),
         ),
-        body: TabBarView(
-          children: [
-            _buildMonitoringTab('Steps', 10000, Colors.blue, context),
-            _buildMonitoringTab('Calories', 2500, Colors.orange, context),
-            _buildMonitoringTab('Water', 2000, Colors.blue[300]!, context),
-            _buildMonitoringTab('Sleep', 8, Colors.purple, context),
-          ],
+        body: StreamBuilder<UserTargets>(
+          stream: _firebaseService.getUserTargets(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(child: Text('Error loading targets'));
+            }
+            
+            if (!snapshot.hasData) {
+              return Center(child: CircularProgressIndicator());
+            }
+
+            final targets = snapshot.data!;
+            
+            return TabBarView(
+              children: [
+                _buildDataMonitoringTab('Steps', targets.dailyStepsTarget, Colors.blue),
+                _buildDataMonitoringTab('Calories', targets.dailyCaloriesTarget, Colors.orange),
+                _buildDataMonitoringTab('Water', targets.dailyWaterTarget, Colors.blue[300]!),
+                _buildDataMonitoringTab('Sleep', targets.dailySleepTarget, Colors.purple),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildMonitoringTab(String type, int target, Color color, BuildContext context) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Weekly $type',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+  Widget _buildDataMonitoringTab(String type, int target, Color color) {
+    final typeKey = type.toLowerCase();
+    
+    return FutureBuilder<List<HealthData>>(
+      future: _firebaseService.getWeeklyHealthData(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
+        }
+        
+        if (snapshot.hasError) {
+          return Center(child: Text('Error loading data'));
+        }
+        
+        final weeklyData = snapshot.data ?? [];
+        
+        return SingleChildScrollView(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Weekly $type',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 20),
+              _buildWeeklyChart(weeklyData, typeKey, target, color),
+              SizedBox(height: 30),
+              Text(
+                'Weekly Overview',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 20),
+              _buildWeeklyStats(weeklyData, typeKey, target, color),
+              SizedBox(height: 20),
+              _buildDailyStats(weeklyData, typeKey, target, color),
+            ],
           ),
-          SizedBox(height: 20),
-          _buildWeeklyChart(color),
-          SizedBox(height: 30),
-          Text(
-            'Monthly Overview',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: 20),
-          _buildMonthlyStats(type, target, color),
-          SizedBox(height: 20),
-          _buildStatsCards(type, color),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildWeeklyChart(Color color) {
+  Widget _buildWeeklyChart(List<HealthData> weekData, String type, int target, Color color) {
+    // Map type to the correct field
+    int Function(HealthData) getValue;
+    switch (type) {
+      case 'steps':
+        getValue = (data) => data.steps;
+        break;
+      case 'calories':
+        getValue = (data) => data.calories;
+        break;
+      case 'water':
+        getValue = (data) => data.water;
+        break;
+      case 'sleep':
+        getValue = (data) => data.sleep;
+        break;
+      default:
+        getValue = (data) => 0;
+    }
+
+    final spots = weekData.asMap().entries.map((entry) {
+      final index = entry.key.toDouble();
+      final value = getValue(entry.value).toDouble();
+      return FlSpot(index, value);
+    }).toList();
+
     return Container(
       height: 250,
       padding: EdgeInsets.all(16),
@@ -85,7 +153,7 @@ class MonitoringScreen extends StatelessWidget {
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
-            horizontalInterval: 1,
+            horizontalInterval: target / 5,
             getDrawingHorizontalLine: (value) {
               return FlLine(
                 color: Colors.grey[300],
@@ -105,32 +173,11 @@ class MonitoringScreen extends StatelessWidget {
               sideTitles: SideTitles(
                 showTitles: true,
                 getTitlesWidget: (value, meta) {
-                  String text = '';
-                  switch (value.toInt()) {
-                    case 0:
-                      text = 'Mon';
-                      break;
-                    case 1:
-                      text = 'Tue';
-                      break;
-                    case 2:
-                      text = 'Wed';
-                      break;
-                    case 3:
-                      text = 'Thu';
-                      break;
-                    case 4:
-                      text = 'Fri';
-                      break;
-                    case 5:
-                      text = 'Sat';
-                      break;
-                    case 6:
-                      text = 'Sun';
-                      break;
-                  }
+                  if (value < 0 || value >= weekData.length) return Text('');
+                  final date = weekData[value.toInt()].date;
+                  final dayName = DateFormat('E').format(date);
                   return Text(
-                    text,
+                    dayName,
                     style: TextStyle(
                       color: Colors.grey[600],
                       fontSize: 12,
@@ -157,17 +204,13 @@ class MonitoringScreen extends StatelessWidget {
             ),
           ),
           borderData: FlBorderData(show: false),
+          minX: 0,
+          maxX: weekData.length - 1.0,
+          minY: 0,
+          maxY: target * 1.2,
           lineBarsData: [
             LineChartBarData(
-              spots: [
-                FlSpot(0, 3),
-                FlSpot(1, 2),
-                FlSpot(2, 5),
-                FlSpot(3, 3.1),
-                FlSpot(4, 4),
-                FlSpot(5, 3),
-                FlSpot(6, 4),
-              ],
+              spots: spots,
               isCurved: true,
               color: color,
               barWidth: 3,
@@ -177,13 +220,49 @@ class MonitoringScreen extends StatelessWidget {
                 color: color.withOpacity(0.1),
               ),
             ),
+            // Add a target line
+            LineChartBarData(
+              spots: [
+                FlSpot(0, target.toDouble()),
+                FlSpot(6, target.toDouble()),
+              ],
+              isCurved: false,
+              color: Colors.grey[400]!,
+              barWidth: 1,
+              dotData: FlDotData(show: false),
+              dashArray: [5, 5],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMonthlyStats(String type, int target, Color color) {
+  Widget _buildWeeklyStats(List<HealthData> weekData, String type, int target, Color color) {
+    // Map type to the correct field
+    int Function(HealthData) getValue;
+    switch (type) {
+      case 'steps':
+        getValue = (data) => data.steps;
+        break;
+      case 'calories':
+        getValue = (data) => data.calories;
+        break;
+      case 'water':
+        getValue = (data) => data.water;
+        break;
+      case 'sleep':
+        getValue = (data) => data.sleep;
+        break;
+      default:
+        getValue = (data) => 0;
+    }
+
+    final total = weekData.fold(0, (sum, data) => sum + getValue(data));
+    final average = weekData.isEmpty ? 0 : total ~/ weekData.length;
+    final best = weekData.isEmpty ? 0 : weekData.map(getValue).reduce((a, b) => a > b ? a : b);
+    final progress = weekData.isEmpty ? 0.0 : total / (target * 7);
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -202,14 +281,14 @@ class MonitoringScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildStatColumn('Total', '45,345', type),
-              _buildStatColumn('Average', '3,023', 'per day'),
-              _buildStatColumn('Best', '5,412', 'in a day'),
+              _buildStatColumn('Total', '$total', type),
+              _buildStatColumn('Average', '$average', 'per day'),
+              _buildStatColumn('Best', '$best', 'in a day'),
             ],
           ),
           SizedBox(height: 16),
           LinearProgressIndicator(
-            value: 0.75,
+            value: progress.clamp(0.0, 1.0),
             backgroundColor: color.withOpacity(0.1),
             valueColor: AlwaysStoppedAnimation<Color>(color),
             minHeight: 8,
@@ -217,7 +296,7 @@ class MonitoringScreen extends StatelessWidget {
           ),
           SizedBox(height: 8),
           Text(
-            '75% of monthly goal completed',
+            '${(progress * 100).toInt()}% of weekly goal completed',
             style: TextStyle(
               color: Colors.grey[600],
               fontSize: 14,
@@ -225,6 +304,130 @@ class MonitoringScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDailyStats(List<HealthData> weekData, String type, int target, Color color) {
+    // Map type to the correct field
+    int Function(HealthData) getValue;
+    String suffix;
+    
+    switch (type) {
+      case 'steps':
+        getValue = (data) => data.steps;
+        suffix = 'steps';
+        break;
+      case 'calories':
+        getValue = (data) => data.calories;
+        suffix = 'kcal';
+        break;
+      case 'water':
+        getValue = (data) => data.water;
+        suffix = 'ml';
+        break;
+      case 'sleep':
+        getValue = (data) => data.sleep;
+        suffix = 'hours';
+        break;
+      default:
+        getValue = (data) => 0;
+        suffix = '';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Daily Breakdown',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: 16),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: NeverScrollableScrollPhysics(),
+          itemCount: weekData.length,
+          itemBuilder: (context, index) {
+            final data = weekData[index];
+            final value = getValue(data);
+            final progress = value / target;
+            final date = data.date;
+            final dayName = DateFormat('EEEE').format(date);
+            final dateStr = DateFormat('MMM d, yyyy').format(date);
+            
+            return Container(
+              margin: EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            dayName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Text(
+                            dateStr,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        '$value $suffix',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: color,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: progress.clamp(0.0, 1.0),
+                    backgroundColor: color.withOpacity(0.1),
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                    minHeight: 5,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '${(progress * 100).toInt()}% of daily goal',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -253,79 +456,6 @@ class MonitoringScreen extends StatelessWidget {
             color: Colors.grey[600],
             fontSize: 12,
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatsCards(String type, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Daily Breakdown',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        SizedBox(height: 16),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: NeverScrollableScrollPhysics(),
-          itemCount: 7,
-          itemBuilder: (context, index) {
-            final days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-            final values = [3450, 2890, 5120, 3100, 4200, 3000, 4300];
-            
-            return Container(
-              margin: EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
-                    blurRadius: 8,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        days[index],
-                        style: TextStyle(
-                          fontWeight: FontWeight.w500,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        'April ${index + 1}, 2023',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    '${values[index]}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: color,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
         ),
       ],
     );

@@ -1,38 +1,58 @@
 import 'package:flutter/material.dart';
-import 'dart:math' as math;
 import 'package:intl/intl.dart';
+import '../../services/firebase_service.dart';
+import '../../models/UserTargets.dart';
+import '../../models/HealthData.dart';
+
 
 class HomeScreen extends StatelessWidget {
-  
-  final Map<String, dynamic> healthData = {
-    'steps': 7500,
-    'calories': 1850,
-    'water': 1200,
-    'sleep': 6,
-  };
-
-  final Map<String, dynamic> targets = {
-    'dailyStepsTarget': 10000,
-    'dailyCaloriesTarget': 2500,
-    'dailyWaterTarget': 2000,
-    'dailySleepTarget': 8,
-  };
+  final FirebaseService _firebaseService = FirebaseService();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(context),
-              _buildDailySummary(context),
-              _buildActivityCards(context),
-              _buildDailyGoals(context),
-              SizedBox(height: 20),
-            ],
-          ),
+        child: StreamBuilder<UserTargets>(
+          stream: _firebaseService.getUserTargets(),
+          builder: (context, targetsSnapshot) {
+            if (targetsSnapshot.hasError) {
+              return Center(child: Text('Error loading data'));
+            }
+            
+            if (!targetsSnapshot.hasData) {
+              return Center(child: CircularProgressIndicator());
+            }
+
+            final targets = targetsSnapshot.data!;
+
+            return StreamBuilder<HealthData>(
+              stream: _firebaseService.getTodayHealthData(),
+              builder: (context, healthSnapshot) {
+                if (healthSnapshot.hasError) {
+                  return Center(child: Text('Error loading health data'));
+                }
+                
+                if (!healthSnapshot.hasData) {
+                  return Center(child: CircularProgressIndicator());
+                }
+
+                final healthData = healthSnapshot.data!;
+
+                return SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeader(context),
+                      _buildDailySummary(context, healthData),
+                      _buildActivityCards(context, healthData, targets),
+                      _buildDailyGoals(context, healthData, targets),
+                      SizedBox(height: 20),
+                    ],
+                  ),
+                );
+              }
+            );
+          }
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -67,7 +87,7 @@ class HomeScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Hello,Vaibhavi',
+                    'Hello, Vaibhavi',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -144,11 +164,20 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                CircularProgressIndicator(
-                  value: 0.75,
-                  backgroundColor: Colors.grey[300],
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-                  strokeWidth: 10,
+                StreamBuilder<double>(
+                  stream: _getHealthScore(),
+                  builder: (context, snapshot) {
+                    final score = snapshot.data ?? 0.0;
+                    return CircularProgressIndicator(
+                      value: score,
+                      backgroundColor: Colors.grey[300],
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        score > 0.7 ? Colors.green : 
+                        score > 0.4 ? Colors.orange : Colors.red
+                      ),
+                      strokeWidth: 10,
+                    );
+                  }
                 ),
               ],
             ),
@@ -159,7 +188,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDailySummary(BuildContext context) {
+  Widget _buildDailySummary(BuildContext context, HealthData healthData) {
     return Container(
       margin: EdgeInsets.all(20),
       padding: EdgeInsets.all(20),
@@ -198,13 +227,19 @@ class HomeScreen extends StatelessWidget {
                   color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text(
-                  '75% Completed',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
+                child: StreamBuilder<double>(
+                  stream: _getOverallProgress(healthData),
+                  builder: (context, snapshot) {
+                    final progress = snapshot.data ?? 0.0;
+                    return Text(
+                      '${(progress * 100).toInt()}% Completed',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
+                    );
+                  }
                 ),
               ),
             ],
@@ -215,25 +250,25 @@ class HomeScreen extends StatelessWidget {
             children: [
               _buildSummaryItem(
                 Icons.directions_walk,
-                '${healthData['steps']}',
+                '${healthData.steps}',
                 'Steps',
                 Colors.white,
               ),
               _buildSummaryItem(
                 Icons.local_fire_department,
-                '${healthData['calories']}',
+                '${healthData.calories}',
                 'Calories',
                 Colors.white,
               ),
               _buildSummaryItem(
                 Icons.water_drop,
-                '${healthData['water']}ml',
+                '${healthData.water}ml',
                 'Water',
                 Colors.white,
               ),
               _buildSummaryItem(
                 Icons.bedtime,
-                '${healthData['sleep']}h',
+                '${healthData.sleep}h',
                 'Sleep',
                 Colors.white,
               ),
@@ -244,6 +279,272 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  
+  
+  
+  
+  Widget _buildActivityCards(BuildContext context, HealthData healthData, UserTargets targets) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Activity Tracking',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: 15),
+          Row(
+            children: [
+              Expanded(
+                child: _buildActivityCard(
+                  context,
+                  'Steps',
+                  Icons.directions_walk,
+                  healthData.steps,
+                  targets.dailyStepsTarget,
+                  'steps',
+                  Colors.blue,
+                ),
+              ),
+              SizedBox(width: 15),
+              Expanded(
+                child: _buildActivityCard(
+                  context,
+                  'Calories',
+                  Icons.local_fire_department,
+                  healthData.calories,
+                  targets.dailyCaloriesTarget,
+                  'kcal',
+                  Colors.orange,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 15),
+          Row(
+            children: [
+              Expanded(
+                child: _buildActivityCard(
+                  context,
+                  'Water',
+                  Icons.water_drop,
+                  healthData.water,
+                  targets.dailyWaterTarget,
+                  'ml',
+                  Colors.blue[300]!,
+                ),
+              ),
+              SizedBox(width: 15),
+              Expanded(
+                child: _buildActivityCard(
+                  context,
+                  'Sleep',
+                  Icons.bedtime,
+                  healthData.sleep,
+                  targets.dailySleepTarget,
+                  'hours',
+                  Colors.purple,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDailyGoals(BuildContext context, HealthData healthData, UserTargets targets) {
+    return Container(
+      margin: EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Daily Goals',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: 15),
+          _buildGoalCard(
+            context,
+            'Complete your steps goal',
+            '${healthData.steps} of ${targets.dailyStepsTarget} steps',
+            healthData.steps / targets.dailyStepsTarget,
+            Colors.blue,
+          ),
+          SizedBox(height: 15),
+          _buildGoalCard(
+            context,
+            'Drink enough water',
+            '${healthData.water} of ${targets.dailyWaterTarget} ml',
+            healthData.water / targets.dailyWaterTarget,
+            Colors.blue[300]!,
+          ),
+          SizedBox(height: 15),
+          _buildGoalCard(
+            context,
+            'Get enough sleep',
+            '${healthData.sleep} of ${targets.dailySleepTarget} hours',
+            healthData.sleep / targets.dailySleepTarget,
+            Colors.purple,
+          ),
+        ],
+      ),
+    );
+  }
+  
+  
+  Stream<double> _getHealthScore() {
+    return _firebaseService.getTodayHealthData().map((healthData) {
+      return _firebaseService.getUserTargets().map((targets) {
+        double stepsScore = healthData.steps / targets.dailyStepsTarget;
+        double caloriesScore = healthData.calories / targets.dailyCaloriesTarget;
+        double waterScore = healthData.water / targets.dailyWaterTarget;
+        double sleepScore = healthData.sleep / targets.dailySleepTarget;
+        
+        return (stepsScore + caloriesScore + waterScore + sleepScore) / 4;
+      }).first;
+    }).asyncExpand((future) => future.asStream());
+  }
+
+  Stream<double> _getOverallProgress(HealthData healthData) {
+    return _firebaseService.getUserTargets().map((targets) {
+      double stepsProgress = healthData.steps / targets.dailyStepsTarget;
+      double caloriesProgress = healthData.calories / targets.dailyCaloriesTarget;
+      double waterProgress = healthData.water / targets.dailyWaterTarget;
+      double sleepProgress = healthData.sleep / targets.dailySleepTarget;
+      
+      return (stepsProgress + caloriesProgress + waterProgress + sleepProgress) / 4;
+    });
+  }
+
+  void _showAddDataDialog(BuildContext context) {
+    final stepsController = TextEditingController();
+    final caloriesController = TextEditingController();
+    final waterController = TextEditingController();
+    final sleepController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Update Health Data',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 5),
+              Text(
+                'Enter your latest health metrics',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
+              ),
+              SizedBox(height: 20),
+              _buildInputField(
+                controller: stepsController,
+                labelText: 'Steps',
+                icon: Icons.directions_walk,
+                color: Colors.blue,
+              ),
+              SizedBox(height: 15),
+              _buildInputField(
+                controller: caloriesController,
+                labelText: 'Calories burned',
+                icon: Icons.local_fire_department,
+                color: Colors.orange,
+              ),
+              SizedBox(height: 15),
+              _buildInputField(
+                controller: waterController,
+                labelText: 'Water intake (ml)',
+                icon: Icons.water_drop,
+                color: Colors.blue[300]!,
+              ),
+              SizedBox(height: 15),
+              _buildInputField(
+                controller: sleepController,
+                labelText: 'Sleep duration (hours)',
+                icon: Icons.bedtime,
+                color: Colors.purple,
+              ),
+              SizedBox(height: 25),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text('Cancel'),
+                  ),
+                  SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () async {
+                      
+                      if (stepsController.text.isNotEmpty) {
+                        await _firebaseService.updateHealthData(
+                          type: 'steps',
+                          value: int.parse(stepsController.text),
+                        );
+                      }
+                      
+                      if (caloriesController.text.isNotEmpty) {
+                        await _firebaseService.updateHealthData(
+                          type: 'calories',
+                          value: int.parse(caloriesController.text),
+                        );
+                      }
+                      
+                      if (waterController.text.isNotEmpty) {
+                        await _firebaseService.updateHealthData(
+                          type: 'water',
+                          value: int.parse(waterController.text),
+                        );
+                      }
+                      
+                      if (sleepController.text.isNotEmpty) {
+                        await _firebaseService.updateHealthData(
+                          type: 'sleep',
+                          value: int.parse(sleepController.text),
+                        );
+                      }
+                      
+                      Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                    child: Text('Save'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  
   Widget _buildSummaryItem(IconData icon, String value, String label, Color color) {
     return Column(
       children: [
@@ -276,80 +577,6 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildActivityCards(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Activity Tracking',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: 15),
-          Row(
-            children: [
-              Expanded(
-                child: _buildActivityCard(
-                  context,
-                  'Steps',
-                  Icons.directions_walk,
-                  healthData['steps'],
-                  targets['dailyStepsTarget'],
-                  'steps',
-                  Colors.blue,
-                ),
-              ),
-              SizedBox(width: 15),
-              Expanded(
-                child: _buildActivityCard(
-                  context,
-                  'Calories',
-                  Icons.local_fire_department,
-                  healthData['calories'],
-                  targets['dailyCaloriesTarget'],
-                  'kcal',
-                  Colors.orange,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 15),
-          Row(
-            children: [
-              Expanded(
-                child: _buildActivityCard(
-                  context,
-                  'Water',
-                  Icons.water_drop,
-                  healthData['water'],
-                  targets['dailyWaterTarget'],
-                  'ml',
-                  Colors.blue[300]!,
-                ),
-              ),
-              SizedBox(width: 15),
-              Expanded(
-                child: _buildActivityCard(
-                  context,
-                  'Sleep',
-                  Icons.bedtime,
-                  healthData['sleep'],
-                  targets['dailySleepTarget'],
-                  'hours',
-                  Colors.purple,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 
@@ -437,48 +664,6 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDailyGoals(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Daily Goals',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: 15),
-          _buildGoalCard(
-            context,
-            'Complete your steps goal',
-            '${healthData['steps']} of ${targets['dailyStepsTarget']} steps',
-            0.75,
-            Colors.blue,
-          ),
-          SizedBox(height: 15),
-          _buildGoalCard(
-            context,
-            'Drink enough water',
-            '${healthData['water']} of ${targets['dailyWaterTarget']} ml',
-            0.6,
-            Colors.blue[300]!,
-          ),
-          SizedBox(height: 15),
-          _buildGoalCard(
-            context,
-            'Get enough sleep',
-            '${healthData['sleep']} of ${targets['dailySleepTarget']} hours',
-            0.75,
-            Colors.purple,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildGoalCard(
     BuildContext context,
     String title,
@@ -512,7 +697,7 @@ class HomeScreen extends StatelessWidget {
                     height: 50,
                     width: 50,
                     child: CircularProgressIndicator(
-                      value: progress,
+                      value: progress.clamp(0.0, 1.0),
                       backgroundColor: Colors.grey[200],
                       valueColor: AlwaysStoppedAnimation<Color>(color),
                       strokeWidth: 5,
@@ -521,7 +706,7 @@ class HomeScreen extends StatelessWidget {
                 ),
                 Center(
                   child: Text(
-                    '${(progress * 100).toInt()}%',
+                    '${(progress.clamp(0.0, 1.0) * 100).toInt()}%',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
@@ -563,115 +748,6 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  void _showActivityDetails(
-    BuildContext context,
-    String activity,
-    int current,
-    int target,
-    String unit,
-    Color color,
-  ) {
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$activity details coming soon!'),
-        backgroundColor: color,
-      ),
-    );
-  }
-
-  void _showAddDataDialog(BuildContext context) {
-    final stepsController = TextEditingController();
-    final caloriesController = TextEditingController();
-    final waterController = TextEditingController();
-    final sleepController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Container(
-          padding: EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Update Health Data',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(height: 5),
-              Text(
-                'Enter your latest health metrics',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 14,
-                ),
-              ),
-              SizedBox(height: 20),
-              _buildInputField(
-                controller: stepsController,
-                labelText: 'Steps',
-                icon: Icons.directions_walk,
-                color: Colors.blue,
-              ),
-              SizedBox(height: 15),
-              _buildInputField(
-                controller: caloriesController,
-                labelText: 'Calories burned',
-                icon: Icons.local_fire_department,
-                color: Colors.orange,
-              ),
-              SizedBox(height: 15),
-              _buildInputField(
-                controller: waterController,
-                labelText: 'Water intake (ml)',
-                icon: Icons.water_drop,
-                color: Colors.blue[300]!,
-              ),
-              SizedBox(height: 15),
-              _buildInputField(
-                controller: sleepController,
-                labelText: 'Sleep duration (hours)',
-                icon: Icons.bedtime,
-                color: Colors.purple,
-              ),
-              SizedBox(height: 25),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text('Cancel'),
-                  ),
-                  SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () {
-                      
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    ),
-                    child: Text('Save'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildInputField({
     required TextEditingController controller,
     required String labelText,
@@ -696,6 +772,22 @@ class HomeScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: color),
         ),
+      ),
+    );
+  }
+
+  void _showActivityDetails(
+    BuildContext context,
+    String activity,
+    int current,
+    int target,
+    String unit,
+    Color color,
+  ) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$activity details: $current of $target $unit'),
+        backgroundColor: color,
       ),
     );
   }

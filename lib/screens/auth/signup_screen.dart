@@ -136,6 +136,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Future<void> _handleSignUp(BuildContext context) async {
     try {
+      
       if (_nameController.text.isEmpty ||
           _emailController.text.isEmpty ||
           _passwordController.text.isEmpty) {
@@ -143,58 +144,53 @@ class _SignUpScreenState extends State<SignUpScreen> {
         return;
       }
 
-      setState(() => _isLoading = true); 
-
+      setState(() => _isLoading = true);
       
-      final emailCheck = await FirebaseAuth.instance.fetchSignInMethodsForEmail(
-        _emailController.text.trim(),
-      );
       
-      if (emailCheck.isNotEmpty) {
-        showSnackBar(context, "Email is already in use", false);
-        return;
-      }
-
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
       
-      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
-
-      
-      await saveUserToFirebase(userCredential.user!);
-
-      
-      showSnackBar(context, "Account created successfully!", true);
-
-      
-      await Future.delayed(Duration(seconds: 1)); 
-      if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => SignInScreen()),
-          (route) => false,
+      try {
+        
+        final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
         );
-      }
 
-    } on FirebaseAuthException catch (e) {
-      String message;
-      switch (e.code) {
-        case 'email-already-in-use':
-          message = "This email is already registered";
-          break;
-        case 'weak-password':
-          message = "Password should be at least 6 characters";
-          break;
-        case 'invalid-email':
-          message = "Please enter a valid email address";
-          break;
-        default:
-          message = "Registration failed. Please try again";
+        
+        await saveUserToFirebase(userCredential.user!);
+        
+        
+        showSnackBar(context, "Account created successfully!", true);
+        
+        
+        await Future.delayed(Duration(seconds: 1));
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => InitialSetupScreen()),
+            (route) => false,
+          );
+        }
+      } on FirebaseAuthException catch (e) {
+        String message;
+        switch (e.code) {
+          case 'email-already-in-use':
+            message = "This email is already registered";
+            break;
+          case 'weak-password':
+            message = "Password should be at least 6 characters";
+            break;
+          case 'invalid-email':
+            message = "Please enter a valid email address";
+            break;
+          default:
+            message = "Registration failed: ${e.message}";
+        }
+        showSnackBar(context, message, false);
       }
-      showSnackBar(context, message, false);
     } catch (e) {
-      showSnackBar(context, "An error occurred. Please try again", false);
+      showSnackBar(context, "An error occurred: ${e.toString()}", false);
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:healthcare_app/screens/pages/main_container.dart';
-import 'screens/pages/home_screen.dart';
+import 'package:healthcare_app/screens/pages/InitialSetupScreen.dart';
 import 'screens/auth/login_screen.dart';
 
 void main() async {
@@ -27,9 +28,33 @@ class MyApp extends StatelessWidget {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
           }
+          
           if (snapshot.hasData) {
-            return MainContainer();
+            // Check if user has completed setup
+            return FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance
+                .collection('users')
+                .doc(snapshot.data!.uid)
+                .get(),
+              builder: (context, userSnapshot) {
+                if (userSnapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator());
+                }
+                
+                final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+                if (userData != null &&
+                    userData.containsKey('dailyStepsTarget')) {
+                  // User has completed setup, go to main app
+                  return MainContainer();
+                } else {
+                  // User needs to complete setup
+                  return InitialSetupScreen();
+                }
+              },
+            );
           }
+          
+          // No user logged in, show login screen
           return SignInScreen();
         },
       ),

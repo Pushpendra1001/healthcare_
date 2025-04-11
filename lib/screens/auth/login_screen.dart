@@ -31,35 +31,54 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   Future<void> _handleSignIn(BuildContext context) async {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      showSnackBar(context, "Please fill all fields", false);
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => MainContainer()),
-      );
-    } on FirebaseAuthException catch (e) {
-      String message = "An error occurred";
-      if (e.code == 'user-not-found') {
-        message = "No user found with this email";
-      } else if (e.code == 'wrong-password') {
-        message = "Wrong password";
+      
+      if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+        showSnackBar(context, "Please fill all fields", false);
+        return;
       }
-      showSnackBar(context, message, false);
+
+      setState(() => _isLoading = true);
+
+      
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+
+      try {
+        
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+        
+        
+        showSnackBar(context, "Login successful!", true);
+      } on FirebaseAuthException catch (e) {
+        String message;
+        switch (e.code) {
+          case 'user-not-found':
+            message = "No user found with this email";
+            break;
+          case 'wrong-password':
+            message = "Wrong password";
+            break;
+          case 'invalid-credential':
+            message = "Invalid email or password";
+            break;
+          case 'too-many-requests':
+            message = "Too many failed login attempts. Try again later";
+            break;
+          default:
+            message = "Login failed: ${e.message}";
+        }
+        showSnackBar(context, message, false);
+      }
     } catch (e) {
-      showSnackBar(context, "An error occurred", false);
+      showSnackBar(context, "An error occurred: ${e.toString()}", false);
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
