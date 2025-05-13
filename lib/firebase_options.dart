@@ -1,0 +1,74 @@
+import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+
+class DefaultFirebaseOptions {
+  static FirebaseOptions get currentPlatform {
+    if (kIsWeb) {
+      return web;
+    }
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return android;
+      case TargetPlatform.iOS:
+        return ios;
+      case TargetPlatform.macOS:
+        return macos;
+      case TargetPlatform.windows:
+        return windows;
+      case TargetPlatform.linux:
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for linux - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
+      default:
+        throw UnsupportedError(
+          'DefaultFirebaseOptions are not supported for this platform.',
+        );
+    }
+  }
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyCf0iOSJzz74GrQs-5ypgrjKrGYCGwitBs',
+    appId: '1:253775565966:web:ec0937a2684e99f2cb65df',
+    messagingSenderId: '253775565966',
+    projectId: 'healthcare-5a2d9',
+    authDomain: 'healthcare-5a2d9.firebaseapp.com',
+    storageBucket: 'healthcare-5a2d9.firebasestorage.app',
+  );
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyA7Jpah1B3WW3TOR3nlsAgsgAq9ajE0vNo',
+    appId: '1:253775565966:android:d4aecd610586f2c0cb65df',
+    messagingSenderId: '253775565966',
+    projectId: 'healthcare-5a2d9',
+    storageBucket: 'healthcare-5a2d9.firebasestorage.app',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyA0AjTLp7cbNbDYDIMsR_XhEEcyClHpza8',
+    appId: '1:253775565966:ios:6222a5df6228abc4cb65df',
+    messagingSenderId: '253775565966',
+    projectId: 'healthcare-5a2d9',
+    storageBucket: 'healthcare-5a2d9.firebasestorage.app',
+    iosBundleId: 'com.example.healthcare',
+  );
+
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyA0AjTLp7cbNbDYDIMsR_XhEEcyClHpza8',
+    appId: '1:253775565966:ios:6222a5df6228abc4cb65df',
+    messagingSenderId: '253775565966',
+    projectId: 'healthcare-5a2d9',
+    storageBucket: 'healthcare-5a2d9.firebasestorage.app',
+    iosBundleId: 'com.example.healthcare',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyCf0iOSJzz74GrQs-5ypgrjKrGYCGwitBs',
+    appId: '1:253775565966:web:12c6de201d02c673cb65df',
+    messagingSenderId: '253775565966',
+    projectId: 'healthcare-5a2d9',
+    authDomain: 'healthcare-5a2d9.firebaseapp.com',
+    storageBucket: 'healthcare-5a2d9.firebasestorage.app',
+  );
+}
